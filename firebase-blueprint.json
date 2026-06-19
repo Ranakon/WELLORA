@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user roles and profile information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "doctor", "advisor"] },
+        "avatar": { "type": "string", "format": "uri" },
+        "specialty": { "type": "string", "description": "Medical specialty for doctors" }
+      },
+      "required": ["uid", "email", "role", "name"]
+    },
+    "Appointment": {
+      "title": "Appointment Request",
+      "description": "Stores appointment requests from users to doctors.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "patientUid": { "type": "string" },
+        "doctorUid": { "type": "string" },
+        "type": { "type": "string" },
+        "time": { "type": "string" },
+        "date": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["patientUid", "doctorUid", "type", "time", "date", "status"]
+    },
+    "Message": {
+      "title": "Chat Message",
+      "description": "Stores messages between users and advisors/doctors.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderUid": { "type": "string" },
+        "receiverUid": { "type": "string" },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "unread": { "type": "boolean" }
+      },
+      "required": ["senderUid", "receiverUid", "content", "timestamp", "unread"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile document."
+    },
+    "/appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "Appointment request document."
+    },
+    "/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Chat message document."
+    }
+  }
+}

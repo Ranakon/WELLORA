@@ -1,0 +1,182 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId} (matches request.auth.uid)
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required, email format)
+    //   - name: string (required)
+    //   - role: string (required, 'user' | 'doctor' | 'advisor')
+    //   - avatar: string (optional)
+    //   - xp: number (optional)
+    //   - streak: number (optional)
+    //   - streakData: map (optional)
+    //   - lastDailyQuestCompletionDate: string (optional)
+    //   - lastDailyResetDate: string (optional)
+    //   - lastOpenedDate: string (optional)
+    //   - waterIntake: number (optional)
+    //   - todoList: list (optional)
+    //   - phone: string (optional)
+    //   - age: string (optional)
+    //   - gender: string (optional)
+    //   - dietType: string (optional)
+    //   - occupation: string (optional)
+    //   - location: string (optional)
+    //   - address: string (optional)
+    //   - healthConditions: string (optional)
+    //   - allergies: string (optional)
+    //   - emergencyContacts: list (optional)
+    //   - insuranceDetails: list (optional)
+    //   - specialty: string (required for doctors)
+    //   - procedure: map (optional)
+    //   - currentStepIndex: number (optional)
+    //
+    // Collection: appointments
+    // Document ID: {appointmentId}
+    // Fields:
+    //   - patientUid: string (required)
+    //   - doctorUid: string (required)
+    //   - type: string (required)
+    //   - time: string (required)
+    //   - date: string (required)
+    //   - status: string (required, 'pending' | 'accepted' | 'rejected')
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: messages
+    // Document ID: {messageId}
+    // Fields:
+    //   - senderUid: string (required)
+    //   - receiverUid: string (required)
+    //   - content: string (required)
+    //   - timestamp: timestamp (required)
+    //   - unread: bool (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "rounakmodi22@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUser(data) {
+      let allowedFields = [
+        'uid', 'email', 'name', 'role', 'avatar', 'xp', 'streak', 'streakData',
+        'lastDailyQuestCompletionDate', 'lastDailyResetDate', 'lastOpenedDate', 'waterIntake', 'todoList', 'phone', 'age', 'gender', 'dietType',
+        'occupation', 'location', 'address', 'healthConditions', 'allergies',
+        'emergencyContacts', 'insuranceDetails', 'procedure', 'currentStepIndex',
+        'plan', 'healthScore', 'specialty'
+      ];
+      return hasRequiredFields(['uid', 'email', 'name', 'role']) &&
+             hasOnlyAllowedFields(allowedFields) &&
+             data.uid == request.auth.uid &&
+             isValidEmail(data.email) &&
+             data.role in ['user', 'doctor', 'advisor', 'admin'] &&
+             (data.role != 'doctor' || ('specialty' in data && data.specialty is string && data.specialty.size() > 0)) &&
+             (data.xp is number || !('xp' in data)) &&
+             (data.streak is number || !('streak' in data)) &&
+             (data.lastDailyQuestCompletionDate is string || !('lastDailyQuestCompletionDate' in data)) &&
+             (data.lastDailyResetDate is string || !('lastDailyResetDate' in data)) &&
+             (data.lastOpenedDate is string || !('lastOpenedDate' in data)) &&
+             (data.waterIntake is number || !('waterIntake' in data)) &&
+             (data.currentStepIndex is number || !('currentStepIndex' in data)) &&
+             (data.procedure is map || !('procedure' in data)) &&
+             (data.streakData is map || !('streakData' in data)) &&
+             (data.todoList is list || !('todoList' in data));
+    }
+
+    function isValidAppointment(data) {
+      return hasRequiredFields(['patientUid', 'doctorUid', 'type', 'time', 'date', 'status', 'createdAt']) &&
+             data.patientUid is string &&
+             data.doctorUid is string &&
+             data.status in ['pending', 'accepted', 'rejected'];
+    }
+
+    function isValidMessage(data) {
+      return hasRequiredFields(['senderUid', 'receiverUid', 'content', 'timestamp', 'unread']) &&
+             data.senderUid is string &&
+             data.receiverUid is string &&
+             data.content is string &&
+             data.content.size() > 0 &&
+             data.content.size() < 5000 &&
+             data.timestamp is timestamp &&
+             data.unread is bool &&
+             (!('chatId' in data) || data.chatId is string);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
+                      request.resource.data.role == resource.data.role; // Cannot change own role
+    }
+
+    match /appointments/{appointmentId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.patientUid || 
+        request.auth.uid == resource.data.doctorUid
+      );
+      allow create: if isAuthenticated() && 
+                      request.auth.uid == request.resource.data.patientUid &&
+                      isValidAppointment(request.resource.data);
+      allow update: if isAuthenticated() && (
+        (request.auth.uid == resource.data.doctorUid && isValidAppointment(request.resource.data)) ||
+        (request.auth.uid == resource.data.patientUid && request.resource.data.status == resource.data.status)
+      );
+    }
+
+    match /messages/{messageId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.senderUid || 
+        request.auth.uid == resource.data.receiverUid ||
+        (resource.data.chatId != null && resource.data.chatId.matches(".*" + request.auth.uid + ".*"))
+      );
+      allow create: if isAuthenticated() && 
+                      request.auth.uid == request.resource.data.senderUid &&
+                      isValidMessage(request.resource.data);
+      allow update: if isAuthenticated() && (
+        request.auth.uid == resource.data.receiverUid && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unread'])
+      );
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

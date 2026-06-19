@@ -1,0 +1,7 @@
+{
+  "name": "WELLORA",
+  "description": "A premium health and wellness platform integrating medical care, financial guidance, and AI-driven health insights.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
